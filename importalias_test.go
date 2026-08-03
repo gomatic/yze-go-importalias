@@ -35,6 +35,14 @@ func TestAVersionSuffixedPathIsNamedByItsPackage(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), importalias.Analyzer, "b")
 }
 
+// TestALeftoverNumberIsReportedOnlyWhenNothingJustifiesIt pins the refactor
+// residue both ways: `lib2` with no other `lib` in the file is debris from a
+// move and is reported, while the same alias beside a genuine second `lib` is
+// earning its number and is silent.
+func TestALeftoverNumberIsReportedOnlyWhenNothingJustifiesIt(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), importalias.Analyzer, "d", "e")
+}
+
 // TestRegistrationIsWellFormed pins the yze wiring.
 func TestRegistrationIsWellFormed(t *testing.T) {
 	assert.NoError(t, importalias.Registration.Validate())

@@ -20,14 +20,22 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"path"
+	"regexp"
 	"strings"
 
 	goyze "github.com/gomatic/go-yze"
 	"golang.org/x/tools/go/analysis"
 )
 
-const message = "import %q is spelled %s here but %s elsewhere in this module; one import, one spelling"
+const (
+	message = "import %q is spelled %s here but %s elsewhere in this module; one import, one spelling"
+	//nolint:lll // one sentence, and breaking it would split the explanation from the name it explains.
+	messageNumbered = "import %q is aliased %s, but nothing here is called %s; the number is left over from a move — drop it"
+)
+
+// numbered matches an alias that is a package's own name followed by digits —
+// the shape goimports and gopls generate to break a collision.
+var numbered = regexp.MustCompile(`^[0-9]+$`)
 
 // Analyzer reports imports spelled inconsistently across the module.
 var Analyzer = &analysis.Analyzer{
@@ -45,13 +53,6 @@ var Registration = goyze.Registration{
 	Analyzer:   Analyzer,
 }
 
-// importPath is a package's quoted import path, unquoted.
-type importPath string
-
-// spelling is the name an import is referred to by in a file: an explicit
-// alias, or the package's own name when the import carries none.
-type spelling string
-
 // run reports every import whose spelling differs from the module's own.
 //
 // Scope is the pass: a package at a time. That is deliberately narrower than
@@ -61,11 +62,31 @@ type spelling string
 // judgement rests on the files the driver loaded rather than on a directory
 // walk's guess about which ones count.
 func run(pass *analysis.Pass) (any, error) {
-	norms := normsOf(pass.TypesInfo, pass.Files)
-	for _, file := range pass.Files {
+	source := sourceFiles(pass)
+	norms := normsOf(pass.TypesInfo, source)
+	for _, file := range source {
 		reportFile(pass, file, norms)
 	}
 	return nil, nil
+}
+
+// sourceFiles is the pass's non-test files.
+//
+// A test file may alias an import for local clarity, and holding it to the
+// source's spelling pits two standards against each other: the cliapp layout
+// MANDATES the alias `domain` in a command's source, while the test beside it
+// reasonably calls the same package `creation` to say which one it is driving.
+// Test files are excluded from the agreement itself, rather than only from the
+// reporting: a spelling only a test uses would otherwise drag the norm away
+// from what the source files settled on.
+func sourceFiles(pass *analysis.Pass) []*ast.File {
+	kept := make([]*ast.File, 0, len(pass.Files))
+	for _, file := range pass.Files {
+		if !strings.HasSuffix(pass.Fset.Position(file.Pos()).Filename, "_test.go") {
+			kept = append(kept, file)
+		}
+	}
+	return kept
 }
 
 // norms is the agreed spelling for each import path, absent when a path is
@@ -114,57 +135,42 @@ func countSpelling(info *types.Info, counts map[importPath]tally, spec *ast.Impo
 	counts[at] = counted
 }
 
-// naturalOf is the name the imported package declares for itself — what a
-// plain import binds, whether or not this particular spec aliases it.
-func naturalOf(info *types.Info, spec *ast.ImportSpec) spelling {
-	if spec.Name == nil {
-		if named, ok := info.Implicits[spec].(*types.PkgName); ok {
-			return spelling(named.Name())
-		}
-		return ""
-	}
-	if named, ok := info.Defs[spec.Name].(*types.PkgName); ok {
-		return spelling(named.Imported().Name())
-	}
-	return ""
-}
-
-// dominant is the spelling a path is written with most often.
-//
-// Ties go to the name the package declares for itself: an even split between a
-// plain import and an alias is a module that has not decided, and the language's
-// own default is the answer least likely to surprise a reader — reporting the
-// PLAIN import as the deviation would be perverse. A tie between two aliases,
-// where no natural name is in play, falls back to the lexicographically smaller
-// so the answer never depends on the order files are read in.
-func dominant(counted tally) spelling {
-	var best spelling
-	for name, count := range counted.counts {
-		if best == "" || count > counted.counts[best] ||
-			(count == counted.counts[best] && prefer(name, best, counted.natural)) {
-			best = name
-		}
-	}
-	return best
-}
-
-// prefer breaks a tie between two equally-used spellings: the package's own
-// name wins, otherwise the lexicographically smaller.
-func prefer(name, best, natural spelling) bool {
-	if natural != "" && (name == natural || best == natural) {
-		return name == natural
-	}
-	return name < best
-}
-
 // reportFile reports each of the file's imports that deviates from the norm
 // without a collision to justify it.
 func reportFile(pass *analysis.Pass, file *ast.File, agreed norms) {
 	for _, spec := range file.Imports {
 		if at, want, ok := deviation(pass.TypesInfo, file, spec, agreed); ok {
 			pass.Reportf(specPos(spec), message, string(at), spellingOf(pass.TypesInfo, spec), want)
+			continue
+		}
+		if at, natural, ok := leftoverNumber(pass.TypesInfo, file, spec); ok {
+			pass.Reportf(specPos(spec), messageNumbered, string(at), spellingOf(pass.TypesInfo, spec), string(natural))
 		}
 	}
+}
+
+// leftoverNumber reports whether spec carries a numbered alias no longer
+// serving any purpose — `abc2` where nothing else in the file is called `abc`.
+//
+// This is the residue of a move. The tools mint `abc2` when two packages named
+// `abc` meet in one file; when one of them later moves away the collision goes
+// with it, and the digit survives forever, naming a package after an argument
+// it no longer has with anything. It is reported only when the plain name is
+// genuinely free in this file, so the fix is always to delete the alias.
+func leftoverNumber(info *types.Info, file *ast.File, spec *ast.ImportSpec) (importPath, spelling, bool) {
+	at, ok := pathOf(spec)
+	if spec.Name == nil || !ok {
+		return "", "", false
+	}
+	natural := naturalOf(info, spec)
+	suffix, cut := strings.CutPrefix(spec.Name.Name, string(natural))
+	if natural == "" || !cut || !numbered.MatchString(suffix) {
+		return "", "", false
+	}
+	if justified(info, file, spec, natural) {
+		return "", "", false
+	}
+	return at, natural, true
 }
 
 // deviation reports whether spec breaks the agreed spelling with no collision
@@ -203,45 +209,4 @@ func specPos(spec *ast.ImportSpec) token.Pos {
 		return spec.Name.Pos()
 	}
 	return spec.Path.Pos()
-}
-
-// pathOf unquotes an import spec's path, reporting false for one that is not a
-// plain quoted string.
-func pathOf(spec *ast.ImportSpec) (importPath, bool) {
-	if spec.Path == nil || len(spec.Path.Value) < 2 {
-		return "", false
-	}
-	unquoted := strings.Trim(spec.Path.Value, `"`)
-	if unquoted == "" {
-		return "", false
-	}
-	return importPath(unquoted), true
-}
-
-// spellingOf is the name a file refers to an import by: its alias, or the
-// package's own name when the import carries none.
-//
-// The declared name comes from the type checker, never from the path's last
-// element — those disagree exactly where it would matter most. Importing
-// "github.com/urfave/cli/v3" plainly binds `cli`, not `v3`, so guessing from
-// the path would read an explicit `cli` alias as a disagreement with the
-// identical plain import and report a file for matching the norm it already
-// matches. A path the checker has no name for falls back to the last element,
-// which is the go tool's own default for a well-formed path.
-//
-// The blank and dot forms are spellings in their own right and compared as
-// such: a package imported for effect in one file and by name in another is
-// exactly the divergence worth reporting, since the two do different things.
-func spellingOf(info *types.Info, spec *ast.ImportSpec) spelling {
-	if spec.Name != nil {
-		return spelling(spec.Name.Name)
-	}
-	if named, ok := info.Implicits[spec].(*types.PkgName); ok {
-		return spelling(named.Name())
-	}
-	at, ok := pathOf(spec)
-	if !ok {
-		return ""
-	}
-	return spelling(path.Base(string(at)))
 }
