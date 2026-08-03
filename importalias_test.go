@@ -1,0 +1,43 @@
+package importalias_test
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"golang.org/x/tools/go/analysis/analysistest"
+
+	importalias "github.com/gomatic/yze-go-importalias"
+)
+
+// TestOneImportOneSpelling pins the rule in both directions: a package spelled
+// two ways across a package's files is reported once, at the deviating spelling
+// — and a deviation forced by a name collision is not, because demanding the
+// module's spelling there would demand code that does not compile.
+func TestOneImportOneSpelling(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), importalias.Analyzer, "a")
+}
+
+// TestACollisionJustifiesTheDeviation pins the guard that keeps this rule
+// honest: package c settles on `lib` for other/lib, but one file imports the
+// other lib too, so that name is already taken there. The deviation is forced
+// by the language, and a rule that reported it would be demanding code that
+// does not compile.
+func TestACollisionJustifiesTheDeviation(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), importalias.Analyzer, "c")
+}
+
+// TestAVersionSuffixedPathIsNamedByItsPackage pins the false positive the
+// obvious implementation would produce: "versioned/cli/v3" binds `cli`, not
+// `v3`, so a plain import and an explicit `cli` alias agree. Reading the name
+// from the path's last element would report a file for already matching the
+// norm.
+func TestAVersionSuffixedPathIsNamedByItsPackage(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), importalias.Analyzer, "b")
+}
+
+// TestRegistrationIsWellFormed pins the yze wiring.
+func TestRegistrationIsWellFormed(t *testing.T) {
+	assert.NoError(t, importalias.Registration.Validate())
+	assert.Equal(t, "yze/importalias", importalias.Registration.RuleID())
+	assert.Same(t, importalias.Analyzer, importalias.Registration.Analyzer)
+}
