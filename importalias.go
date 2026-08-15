@@ -79,10 +79,17 @@ func run(pass *analysis.Pass) (any, error) {
 // Test files are excluded from the agreement itself, rather than only from the
 // reporting: a spelling only a test uses would otherwise drag the norm away
 // from what the source files settled on.
+//
+// The name comes from the FileSet's own entry, never from a Position: Position
+// applies //line directives, so a file could rename itself out of the agreement
+// with one comment line while the go tool went on compiling it as ordinary
+// source — hiding its own deviation and withdrawing its vote from the norm the
+// rest of the package is held to. A decision ABOUT a file must read something
+// that file cannot rewrite.
 func sourceFiles(pass *analysis.Pass) []*ast.File {
 	kept := make([]*ast.File, 0, len(pass.Files))
 	for _, file := range pass.Files {
-		if !strings.HasSuffix(pass.Fset.Position(file.Pos()).Filename, "_test.go") {
+		if !strings.HasSuffix(pass.Fset.File(file.Pos()).Name(), "_test.go") {
 			kept = append(kept, file)
 		}
 	}

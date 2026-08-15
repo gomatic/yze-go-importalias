@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/tools/go/analysis"
 )
 
 // spec builds an import spec with the given path literal and optional alias.
@@ -137,4 +138,32 @@ func TestNaturalOfReadsTheImportedPackagesOwnName(t *testing.T) {
 
 	want.Equal(spelling(""), naturalOf(&types.Info{}, plain), "an unknown plain import has no natural name")
 	want.Equal(spelling(""), naturalOf(&types.Info{}, aliased), "an unknown aliased import has no natural name")
+}
+
+// TestSourceFilesReadTheNameTheFileCannotRewrite pins the test-file exclusion to the FileSet's own
+// entry for a file. A //line directive compiles to exactly the
+// AddLineColumnInfo calls made here: fset.Position reads that alternative
+// information and token.File.Name() ignores it, so the disagreement below is
+// the one a directive produces, built directly rather than parsed.
+//
+// Both directions are asserted because reading the rewritten name is wrong in
+// both: it hides a deviation in compiled source and withdraws that file's vote from the norm, while holding a real test file to a norm it was excused from.
+func TestSourceFilesReadTheNameTheFileCannotRewrite(t *testing.T) {
+	t.Parallel()
+
+	fset := token.NewFileSet()
+	shipped := fset.AddFile("shipped.go", -1, 100)
+	shipped.AddLineColumnInfo(0, "zz_test.go", 1, 1)
+	tested := fset.AddFile("shipped_test.go", -1, 100)
+	tested.AddLineColumnInfo(0, "nottest.go", 1, 1)
+	source := &ast.File{Package: shipped.Pos(1)}
+	pass := &analysis.Pass{Fset: fset, Files: []*ast.File{source, {Package: tested.Pos(1)}}}
+
+	assert.Equal(t, "zz_test.go", fset.Position(shipped.Pos(1)).Filename,
+		"the position machinery does adopt the claimed name — without this the rest asserts nothing")
+	assert.Equal(t, "nottest.go", fset.Position(tested.Pos(1)).Filename,
+		"and in the other direction too")
+
+	assert.Equal(t, []*ast.File{source}, sourceFiles(pass),
+		"the agreement holds the file the go tool compiles as source, and only that one")
 }

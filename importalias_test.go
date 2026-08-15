@@ -49,3 +49,19 @@ func TestRegistrationIsWellFormed(t *testing.T) {
 	assert.Equal(t, "yze/importalias", importalias.Registration.RuleID())
 	assert.Same(t, importalias.Analyzer, importalias.Registration.Analyzer)
 }
+
+// TestADirectiveDoesNotRenameAFile pins the test-file exclusion to the name the
+// FileSet holds, which the judged file cannot rewrite. A `//line` directive is a
+// compiler feature for generated code: it changes what fset.Position reports and
+// nothing else — the go tool still compiles the file, and go list still names it
+// in GoFiles. So an exclusion resolved through Position is decided by the very
+// file it is excluding, and this one is doubly load-bearing: an excluded file is
+// out of the AGREEMENT as well as out of the reporting, so a forged name both
+// hides a deviation and removes its vote.
+//
+// Package forgeline settles on the plain spelling twice over. forged.go is
+// ordinary source claiming a test name and is reported anyway; forgeline_test.go
+// is a real test file claiming a source name and is spared anyway.
+func TestADirectiveDoesNotRenameAFile(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), importalias.Analyzer, "forgeline")
+}
