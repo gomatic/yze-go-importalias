@@ -82,15 +82,18 @@ func TestADirectiveDoesNotRenameAFile(t *testing.T) {
 // which is the only region where a forged vote is observable at all.
 //
 // The verdict is the one the compiled identity dictates: all three files vote,
-// `shed` wins, and the plain import is the deviation — identical, byte for byte,
+// `shed` wins, and the odd one out is the deviation — identical, byte for byte,
 // to the same three files with the directives deleted, which is what makes the
 // directives worthless to their authors. Resolving the identity through Position
 // instead drops both forged files from the tally and reports NOTHING, and so
 // would any rule that let a forged file be judged but not counted: the norm it
 // would be judged against would cease to exist.
 //
-// Whether a bare plurality is the right norm is a separate, directive-free
-// question, open as importalias.norm-is-not-a-bare-vote.
+// The odd one out is an ALIAS, not the plain import, so this case asserts
+// nothing about whether a bare plurality may report a plain import as the
+// deviation — a separate, directive-free question open as
+// importalias.norm-is-not-a-bare-vote. An alias-versus-alias package
+// discriminates identically and stays out of it.
 func TestAForgedFileVotesAsWhatTheGoToolCompiled(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), importalias.Analyzer, "forgevote")
 }

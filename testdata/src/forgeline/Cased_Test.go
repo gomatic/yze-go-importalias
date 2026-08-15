@@ -16,5 +16,6 @@ import (
 //
 // Each boundary fixture spells the import its own way rather than sharing one
 // deviant alias, so that adding them cannot move the norm the package settled
-// on: lib keeps a plurality of two against four spellings used once each.
+// on: lib keeps a plurality of two against five spellings used once each —
+// shed, shard, shim, shale and sheaf.
 func Cased() string { return sheaf.Name }

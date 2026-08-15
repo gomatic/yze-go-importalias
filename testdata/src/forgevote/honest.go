@@ -6,8 +6,8 @@
 //
 // The answer this pins is that it gets exactly the vote its COMPILED identity
 // earns it, and nothing more or less. All three files are in GoFiles, all three
-// count, `shed` is the spelling written most often, and the plain import is the
-// deviation — the same verdict, byte for byte, that the same three files produce
+// count, `shed` is the spelling written most often, and the odd one out is the
+// deviation — the same verdict, byte for byte, that these three files produce
 // with the directives deleted. That equality was measured, and it is the point:
 // the directives buy their authors nothing at all.
 //
@@ -19,26 +19,23 @@
 // would cease to exist. That is the trap in "a forged file may not vote", and
 // this case is what fails when someone tries it.
 //
-// The remedy is one the reported author can actually take, which is the
-// question docs/s04.md item 8 asks of every finding. It is not "find two
-// comments nothing reports": the directives are irrelevant to the verdict, the
-// deviation named is a spelling, and the author either adopts `shed` here or
-// respells the two files that outvoted them — both ordinary edits to ordinary
-// source, neither of them blocked by anything the forgers wrote.
+// The odd one out is deliberately an ALIAS and not the plain import, so that
+// nothing here asserts the contested half. Whether a bare plurality may report a
+// PLAIN import as the deviation — which dominant() already calls perverse at a
+// tie, with nothing explaining why two-to-one differs in kind — is open as
+// importalias.norm-is-not-a-bare-vote, and an alias-versus-alias package
+// discriminates identically while staying out of it.
 //
-// What is NOT settled here is whether a bare plurality is the right norm at all.
-// dominant() already refuses to call a plain import the deviation at a TIE, on
-// the ground that doing so would be perverse; nothing explains why two-to-one is
-// different in kind. That is a question about the rule, not about directives,
-// and it is open as importalias.norm-is-not-a-bare-vote. Should it be answered
-// the other way, this fixture's want moves to the two aliasing files and the
-// directive assertion above is unaffected.
+// The remedy is one the reported author can take, which is what docs/s04.md item
+// 8 asks: adopt `shed` here, or respell the two files that outvoted them. Both
+// are ordinary edits to ordinary source, neither blocked by anything the forgers
+// wrote.
 package forgevote
 
 import (
-	"lib" // want `import "lib" is spelled lib here but shed elsewhere`
+	hedge "lib" // want `import "lib" is spelled hedge here but shed elsewhere`
 )
 
-// Honest imports the package the way the language does, and is the file the
-// rule holds to account.
-func Honest() string { return lib.Name }
+// Honest spells the import its own way and is the file the rule holds to
+// account, because two other files spell it another way.
+func Honest() string { return hedge.Name }
