@@ -28,8 +28,7 @@ import (
 )
 
 const (
-	message = "import %q is spelled %s here but %s elsewhere in this module; one import, one spelling"
-	//nolint:lll // one sentence, and breaking it would split the explanation from the name it explains.
+	message         = "import %q is spelled %s here but %s elsewhere in this module; one import, one spelling"
 	messageNumbered = "import %q is aliased %s, but nothing here is called %s; the number is left over from a move — drop it"
 )
 
